@@ -4708,7 +4708,24 @@ function UI:CreateWindow(Config)
             for _, object in ipairs(Main:GetDescendants()) do ApplyText(object) end
         end,0.85,1.2)
     end
-    HeaderButton("SettingsButton","settings",0,OpenSettings).Position = UDim2.new(0,48,0,12)
+    -- Native glyph: this button must not depend on the remote icon library loading.
+    local SettingsButton = VexUI:Create("TextButton", {
+        Name = "SettingsButton", Parent = Main,
+        Position = UDim2.new(0, 48, 0, 12),
+        Size = UDim2.new(0, 28, 0, 28),
+        Visible = true, Active = true, AutoButtonColor = false,
+        BackgroundTransparency = 1, TextTransparency = 0,
+        Text = "\u{2699}", Font = Enum.Font.Arial, TextSize = 20,
+        ZIndex = 203,
+        ThemeID = {BackgroundColor3 = "ElementColor", TextColor3 = "Text"},
+    }, {VexUI:Create("UICorner", {CornerRadius = UDim.new(0, 6)})})
+    SettingsButton.Activated:Connect(OpenSettings)
+    SettingsButton.MouseEnter:Connect(function()
+        Utility:TweenObject(SettingsButton, {BackgroundTransparency = 0}, 0.12)
+    end)
+    SettingsButton.MouseLeave:Connect(function()
+        Utility:TweenObject(SettingsButton, {BackgroundTransparency = 1}, 0.12)
+    end)
 
     return Window
 end
