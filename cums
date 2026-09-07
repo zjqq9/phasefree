@@ -4616,6 +4616,27 @@ function UI:CreateWindow(Config)
         end
     end
     HeaderButton("AppearanceButton", "palette", -Window.Size.X.Offset + 16, OpenAppearance).Position = UDim2.new(0, 16, 0, 12)
+    local SettingsButton = VexUI:Create("TextButton", {
+        Name = "SettingsButton", Parent = Main,
+        Position = UDim2.new(0, 50, 0, 12), Size = UDim2.new(0, 28, 0, 28),
+        Visible = true, Active = true, AutoButtonColor = false,
+        BackgroundTransparency = 1, Text = "", ZIndex = 203,
+        ThemeID = {BackgroundColor3 = "ElementColor"},
+    }, {VexUI:Create("UICorner", {CornerRadius = UDim.new(0, 6)})})
+    -- Three adjustment rails; no downloaded texture or font glyph is required.
+    for index, knobX in ipairs({6, 12, 8}) do
+        local y = 7 + (index - 1) * 6
+        VexUI:Create("Frame", {
+            Parent = SettingsButton, Position = UDim2.new(0, 6, 0, y),
+            Size = UDim2.new(0, 16, 0, 1), ZIndex = 204,
+            ThemeID = {BackgroundColor3 = "Text"},
+        })
+        VexUI:Create("Frame", {
+            Parent = SettingsButton, Position = UDim2.new(0, knobX, 0, y - 2),
+            Size = UDim2.new(0, 4, 0, 5), ZIndex = 205,
+            ThemeID = {BackgroundColor3 = "Text"},
+        }, {VexUI:Create("UICorner", {CornerRadius = UDim.new(0, 1)})})
+    end
     local settingsPanel, captureConnection
     local textFactor = 1
     local baseText = setmetatable({}, {__mode = "k"})
@@ -4708,17 +4729,6 @@ function UI:CreateWindow(Config)
             for _, object in ipairs(Main:GetDescendants()) do ApplyText(object) end
         end,0.85,1.2)
     end
-    -- Native glyph: this button must not depend on the remote icon library loading.
-    local SettingsButton = VexUI:Create("TextButton", {
-        Name = "SettingsButton", Parent = Main,
-        Position = UDim2.new(0, 48, 0, 12),
-        Size = UDim2.new(0, 28, 0, 28),
-        Visible = true, Active = true, AutoButtonColor = false,
-        BackgroundTransparency = 1, TextTransparency = 0,
-        Text = "\u{2699}", Font = Enum.Font.Arial, TextSize = 20,
-        ZIndex = 203,
-        ThemeID = {BackgroundColor3 = "ElementColor", TextColor3 = "Text"},
-    }, {VexUI:Create("UICorner", {CornerRadius = UDim.new(0, 6)})})
     SettingsButton.Activated:Connect(OpenSettings)
     SettingsButton.MouseEnter:Connect(function()
         Utility:TweenObject(SettingsButton, {BackgroundTransparency = 0}, 0.12)
