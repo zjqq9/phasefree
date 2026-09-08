@@ -345,7 +345,7 @@ function Utility:ElText(parent, title, desc, scope)
         Size = UDim2.new(1, 0, 0, 5),
         AutomaticSize = "Y",
         ZIndex = 16,
-        FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.SemiBold),
+        FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Regular),
         TextSize = 12,
         TextTransparency = 0.15,
         TextColor3 = Color3.fromRGB(255, 255, 255),
@@ -392,7 +392,7 @@ function Utility:Element(RightScroll, ElementFrame, sizeY, scope)
         ClipsDescendants = true,
         ZIndex = 16,
     }, {
-        Utility:ListLayout("V", 1),
+        Utility:ListLayout("V", 3),
         Utility:Padding({ top = 9 }),
     })
 
