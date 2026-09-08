@@ -149,6 +149,7 @@ UI.Theme = VexUI.Themes["Dark"]
 function VexUI:Create(class, properties, children)
     properties = properties or {}
     local inst = Instance.new(class)
+    local requestedFontFace, requestedFont = properties.FontFace, properties.Font
 
     local defaults = VexUI.DefaultProps[class]
     if defaults then
@@ -165,6 +166,20 @@ function VexUI:Create(class, properties, children)
         end
     end
 
+    -- Font and FontFace address the same font; explicit input wins over defaults.
+    if requestedFontFace ~= nil then
+        inst.FontFace = requestedFontFace
+    elseif requestedFont ~= nil then
+        inst.Font = requestedFont
+    end
+
+    -- Use one font family for all UI text instead of mixed Gotham aliases.
+    if class == "TextLabel" or class == "TextButton" or class == "TextBox" then
+        local weight = inst.FontFace.Weight
+        local bold = weight == Enum.FontWeight.SemiBold or weight == Enum.FontWeight.Bold
+            or weight == Enum.FontWeight.ExtraBold or weight == Enum.FontWeight.Heavy
+        inst.FontFace = Font.fromEnum(bold and Enum.Font.ArialBold or Enum.Font.Arial)
+    end
     for _, Child in next, children or {} do
         Child.Parent = inst
     end
@@ -4813,9 +4828,11 @@ function UI:CreateWindow(Config)
         local function Button(parent, text, pos, size, fn)
             local button = VexUI:Create("TextButton", {Parent = parent, Text = text, Position = pos,
                 Size = size, TextTransparency = 0, TextSize = 12, ZIndex = 1303,
+                FontFace = Font.fromEnum(Enum.Font.GothamMedium),
                 ThemeID = {BackgroundColor3 = "Placeholder", TextColor3 = "Text"}},
                 {VexUI:Create("UICorner", {CornerRadius = UDim.new(0, 6)})})
             if text == "Restore" or text == "Done" then
+                button.FontFace = Font.fromEnum(Enum.Font.Arial)
                 button.BackgroundTransparency = 1
                 VexUI:AddThemeObject(button, {BackgroundColor3 = "Placeholder", TextColor3 = "Muted"})
             end
@@ -4987,8 +5004,28 @@ function UI:CreateWindow(Config)
         query:CaptureFocus()
     end
     HeaderButton("SearchButton", "search", 0, OpenControlSearch).Position = UDim2.new(0,82,0,12)
-    TitleLabel.Position = UDim2.new(0,116,0,8)
-    TitleLabel.Size = UDim2.new(1,-232,0,36)
+    local DiscordButton = HeaderButton("DiscordButton", "message-circle", 0, function()
+        local copy = setclipboard or toclipboard
+        if type(copy) ~= "function" then
+            NotifyAction("Discord", "Clipboard is unavailable on this device.")
+            return
+        end
+        local ok = pcall(copy, "https://discord.gg/4Vq35Jvd3C")
+        NotifyAction("Discord", ok and "Discord invite copied to clipboard" or "Could not copy Discord invite.")
+    end)
+    DiscordButton.Position = UDim2.new(0,114,0,12)
+    -- Use the Discord brand glyph from the existing Geist icon spritesheet.
+    local discordIcon = IconsV2.Icon2("logo-discord", "geist")
+    local discordImage = DiscordButton:FindFirstChildOfClass("ImageLabel")
+    if discordIcon and discordImage then
+        discordImage.Image = discordIcon[1]
+        discordImage.ImageRectOffset = discordIcon[2].ImageRectPosition
+        discordImage.ImageRectSize = discordIcon[2].ImageRectSize
+        discordImage.Position = UDim2.new(0.5,-8,0.5,-8)
+        discordImage.Size = UDim2.fromOffset(16,16)
+    end
+    TitleLabel.Position = UDim2.new(0,148,0,8)
+    TitleLabel.Size = UDim2.new(1,-264,0,36)
 
 
     notificationsReady = true
