@@ -1,4 +1,5 @@
 local Utility = {}
+local Text
 local TweenService = game:GetService("TweenService")
 
 function Utility:TweenObject(obj, properties, duration, ...)
@@ -161,7 +162,7 @@ function VexUI:Create(class, properties, children)
     end
 
     for property, Value in next, properties or {} do
-        if property ~= "ThemeID" then
+        if property ~= "ThemeID" and property ~= "Font" and property ~= "FontFace" then
             inst[property] = Value
         end
     end
@@ -171,14 +172,10 @@ function VexUI:Create(class, properties, children)
         inst.FontFace = requestedFontFace
     elseif requestedFont ~= nil then
         inst.Font = requestedFont
-    end
-
-    -- Use one font family for all UI text instead of mixed Gotham aliases.
-    if class == "TextLabel" or class == "TextButton" or class == "TextBox" then
-        local weight = inst.FontFace.Weight
-        local bold = weight == Enum.FontWeight.SemiBold or weight == Enum.FontWeight.Bold
-            or weight == Enum.FontWeight.ExtraBold or weight == Enum.FontWeight.Heavy
-        inst.FontFace = Font.fromEnum(bold and Enum.Font.ArialBold or Enum.Font.Arial)
+    elseif properties.FontFace ~= nil then
+        inst.FontFace = properties.FontFace
+    elseif properties.Font ~= nil then
+        inst.Font = properties.Font
     end
     for _, Child in next, children or {} do
         Child.Parent = inst
@@ -328,7 +325,7 @@ end
 
 function Utility:ElText(parent, title, desc, scope)
     local Title = Text(parent, title, {
-        Size = UDim2.new(1, 0, 0, 5),
+        Size = UDim2.new(1, 0, 0, 20),
         AutomaticSize = "Y",
         ZIndex = 16,
         FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.SemiBold),
@@ -338,11 +335,11 @@ function Utility:ElText(parent, title, desc, scope)
         TextWrapped = true,
         TextXAlignment = Enum.TextXAlignment.Left,
         ThemeID = { TextColor3 = Utility:T(scope, "Text", "Text") }
-    }, { Utility:Padding({ left = 14 }) })
+    }, { Utility:Padding({ left = 14, right = 8, top = 2, bottom = 2 }) })
     Title.Position = UDim2.new(0, 0, 0, 0)
 
     local Desc = Text(parent, desc, {
-        Size = UDim2.new(1, 0, 0, 5),
+        Size = UDim2.new(1, 0, 0, 18),
         AutomaticSize = "Y",
         ZIndex = 16,
         FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Regular),
@@ -354,55 +351,76 @@ function Utility:ElText(parent, title, desc, scope)
         TextXAlignment = Enum.TextXAlignment.Left,
         Visible = desc ~= nil,
         ThemeID = { TextColor3 = Utility:T(scope, "Description", "Muted") }
-    }, { Utility:Padding({ left = 14 }) })
+    }, { Utility:Padding({ left = 14, right = 8, top = 2, bottom = 2 }) })
 
     return Title, Desc
 end
 
+-- One-way layout: native text determines the column height; the column determines
+-- the row height. No content node uses a percentage of its auto-sized parent height.
 function Utility:Element(RightScroll, ElementFrame, sizeY, scope)
-    local Beeee = VexUI:Create("Frame", {
-        Parent = RightScroll,
-        BackgroundTransparency = 1,
-        AutomaticSize = "Y",
+    local row = VexUI:Create("Frame", {
+        Name = scope .. "Row", Parent = RightScroll,
+        BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.None,
         Size = UDim2.new(0, ElementFrame.Size.X.Offset - 24, 0, sizeY or 40),
         ZIndex = 15,
     })
-
-    local Card = VexUI:Create("Frame", {
-        Parent = Beeee,
-        AutomaticSize = "Y",
-        ClipsDescendants = true,
-        BackgroundTransparency = 0,
-        Size = UDim2.new(1, 0, 1, 0),
-        BorderSizePixel = 0,
-        ZIndex = 15,
-        ThemeID = { BackgroundColor3 = Utility:T(scope, "Background", "ElementColor") }
+    local card = VexUI:Create("Frame", {
+        Name = "Card", Parent = row, AutomaticSize = Enum.AutomaticSize.None,
+        ClipsDescendants = false, BackgroundTransparency = 0,
+        Size = UDim2.new(1, 0, 1, 0), BorderSizePixel = 0, ZIndex = 15,
+        ThemeID = {BackgroundColor3 = Utility:T(scope, "Background", "ElementColor")},
     }, {
         Utility:GlassStroke(),
-        VexUI:Create("UICorner", {
-            CornerRadius = UDim.new(0, 8),
-        }),
-        Utility:Padding({ top = 6, bottom = 8 }),
+        VexUI:Create("UICorner", {CornerRadius = UDim.new(0, 8)}),
     })
-
-    local Inner = VexUI:Create("Frame", {
-        Parent = Card,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 1, 0),
-        ClipsDescendants = true,
-        ZIndex = 16,
-    }, {
-        Utility:ListLayout("V", 3),
-        Utility:Padding({ top = 9 }),
-    })
-
-    return Beeee, Card, Inner
+    local inner = VexUI:Create("Frame", {
+        Name = "TextColumn", Parent = card, BackgroundTransparency = 1,
+        Position = UDim2.new(0, 0, 0, 8),
+        Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+        ClipsDescendants = false, ZIndex = 16,
+    }, {Utility:ListLayout("V", 2)})
+    local function fitRow()
+        local scale = 1
+        local ancestor = row.Parent
+        while ancestor and ancestor:IsA("GuiObject") do
+            local uiScale = ancestor:FindFirstChildOfClass("UIScale")
+            if uiScale then scale = scale * uiScale.Scale end
+            ancestor = ancestor.Parent
+        end
+        local height = math.ceil(inner.AbsoluteSize.Y / math.max(0.05, scale)) + 16
+        height = math.max(sizeY or 40, height)
+        if row.Size.Y.Offset ~= height then
+            row.Size = UDim2.new(row.Size.X.Scale, row.Size.X.Offset, 0, height)
+        end
+    end
+    inner:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitRow)
+    task.defer(fitRow)
+    return row, card, inner
 end
 
-local IconsV2 = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/Footagesus/Icons/main/Main-v2.lua"))()
-IconsV2.SetIconsType("lucide")
+local IconsV2
+local function LoadIcons()
+    if IconsV2 then return end
+    local finished, success, result = false, false, nil
+    task.spawn(function()
+        success, result = pcall(function()
+            return loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/Footagesus/Icons/main/Main-v2.lua"))()
+        end)
+        finished = true
+    end)
+    local deadline = os.clock() + 20
+    while not finished and os.clock() < deadline do
+        game:GetService("RunService").Heartbeat:Wait()
+    end
+    if not finished then error("Icon library download timed out", 0) end
+    if not success then error(result, 0) end
+    result.SetIconsType("lucide")
+    IconsV2 = result
+end
 
 local function GetIcon(icon)
+    LoadIcons()
     if typeof(icon) == "string" and icon:find("rbxassetid://") then
         return icon
     end
@@ -420,6 +438,7 @@ local function GetIcon(icon)
 end
 
 local UserInputService = game:GetService("UserInputService")
+local HoldingSlider = false
 
 local function enableDragging(frame)
     if game:GetService("UserInputService").TouchEnabled then return end
@@ -445,6 +464,7 @@ local function enableDragging(frame)
     end)
 
     UserInputService.InputChanged:Connect(function(input)
+        if dragging and HoldingSlider then dragging = false end
         if dragging then
             if input.UserInputType == Enum.UserInputType.MouseMovement
             or input.UserInputType == Enum.UserInputType.Touch then
@@ -494,7 +514,7 @@ function LockedElm(Frame, Stat)
     return LockFrame
 end
 
-function Text(parent, text, textProps, children)
+local function LegacyIconText(parent, text, textProps, children)
     local container = VexUI:Create("Frame", {
         BackgroundTransparency = textProps.BackgroundTransparency or 1,
         AutomaticSize = textProps.AutomaticSize or "XY",
@@ -640,6 +660,75 @@ function Text(parent, text, textProps, children)
     }
 end
 
+-- Ordinary UI copy is one persistent native label, not nested auto-sized frames.
+function Text(parent, text, textProps, children)
+    textProps = textProps or {}
+    local rawText = tostring(text or "")
+    local hasIcon = false
+    for token in rawText:gmatch("<([%w_%-]+)>") do
+        if token ~= "b" and token ~= "i" and token ~= "u" and token ~= "s"
+            and token ~= "br" and token ~= "uppercase" and token ~= "smallcaps" then
+            LoadIcons()
+            if IconsV2.Icon(token, "lucide") then hasIcon = true break end
+        end
+    end
+    if hasIcon then return LegacyIconText(parent, text, textProps, children) end
+    local size = textProps.Size or UDim2.new()
+    local automaticSize = textProps.AutomaticSize or Enum.AutomaticSize.XY
+    -- Wrapped copy must have a fixed available width and grow vertically.
+    -- Growing both axes can produce a narrow label and clipped/misaligned words.
+    if textProps.TextWrapped then
+        automaticSize = Enum.AutomaticSize.Y
+        size = UDim2.new(size.X.Scale > 0 and size.X.Scale or 1,
+            size.X.Offset, 0, math.max(size.Y.Offset, (textProps.TextSize or 13) + 6))
+    end
+    local label = VexUI:Create("TextLabel", {
+        Parent = textProps.Parent or parent,
+        BackgroundTransparency = textProps.BackgroundTransparency or 1,
+        Size = size,
+        AutomaticSize = automaticSize,
+        Position = textProps.Position,
+        LayoutOrder = textProps.LayoutOrder,
+        ZIndex = textProps.ZIndex,
+        Visible = textProps.Visible ~= false,
+        Text = rawText:gsub("\\n", "\n"),
+        TextSize = textProps.TextSize or 13,
+        TextScaled = false,
+        TextStrokeTransparency = 1,
+        FontFace = textProps.FontFace or Font.fromEnum(Enum.Font.Arial),
+        TextColor3 = textProps.TextColor3 or Color3.new(1, 1, 1),
+        TextTransparency = textProps.TextTransparency or 0,
+        TextWrapped = textProps.TextWrapped or false,
+        RichText = textProps.RichText or false,
+        TextXAlignment = textProps.TextXAlignment or Enum.TextXAlignment.Left,
+        TextYAlignment = textProps.TextYAlignment or Enum.TextYAlignment.Top,
+        ThemeID = textProps.ThemeID,
+    }, children)
+    if textProps.TextWrapped then
+        local function fitMinimumLineHeight()
+            local minimum = label.TextSize + 6
+            if label.Size.Y.Offset ~= minimum then
+                label.Size = UDim2.new(label.Size.X.Scale, label.Size.X.Offset, 0, minimum)
+            end
+        end
+        label:GetPropertyChangedSignal("TextSize"):Connect(fitMinimumLineHeight)
+        fitMinimumLineHeight()
+    end
+    local function setText(value)
+        label.Text = tostring(value or ""):gsub("\\n", "\n")
+    end
+    -- Existing controls use both .Frame/.SetText and direct .Text/.Visible access.
+    return setmetatable({
+        Frame = label,
+        SetText = setText,
+        UIPadding = label:FindFirstChildOfClass("UIPadding"),
+    }, {
+        __index = function(_, key) return label[key] end,
+        __newindex = function(_, key, value)
+            if key == "Text" then setText(value) else label[key] = value end
+        end,
+    })
+end
     local UIScreen = VexUI:Create("ScreenGui", {
         Parent = game:GetService("CoreGui"),
         --ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
@@ -679,7 +768,89 @@ end
         Utility:TweenObject(Island, {Size = UDim2.new(0, Island.UIListLayout.AbsoluteContentSize.X + 5, 0, 35)}, 0, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
     end)
 
-function UI:CreateWindow(Config)
+-- Startup UI uses no downloaded images, so it can show before icon loading.
+function VexUI:StartupLoader(config)
+    local theme = self.Themes[config.Theme or "Dark"] or self.Themes.Dark
+    local function make(class, props, parent)
+        local object = Instance.new(class)
+        for key, value in pairs(props) do object[key] = value end
+        object.Parent = parent
+        return object
+    end
+    local screen = make("ScreenGui", {Name = "AERO_Startup", ResetOnSpawn = false,
+        IgnoreGuiInset = true, DisplayOrder = 10000}, UIScreen.Parent)
+    local card = make("CanvasGroup", {AnchorPoint = Vector2.new(0.5,0.5), Position = UDim2.fromScale(0.5,0.5),
+        Size = UDim2.new(1,-40,0,174), BackgroundColor3 = theme.Background,
+        BackgroundTransparency = 0.1, BorderSizePixel = 0}, screen)
+    make("UISizeConstraint", {MaxSize = Vector2.new(360,174)}, card)
+    make("UICorner", {CornerRadius = UDim.new(0,16)}, card)
+    make("UIStroke", {Color = theme.Outline, Transparency = 0.35, Thickness = 1}, card)
+    local function label(text, y, height, size, color)
+        return make("TextLabel", {Text = text, Position = UDim2.new(0,22,0,y), Size = UDim2.new(1,-44,0,height),
+            BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = size,
+            TextColor3 = color, TextTruncate = Enum.TextTruncate.AtEnd}, card)
+    end
+    label(config.Name or "AERO",14,28,15,theme.Text)
+    make("Frame", {AnchorPoint = Vector2.new(0.5,0), Position = UDim2.new(0.5,0,0,52),
+        Size = UDim2.fromOffset(76,2), BackgroundColor3 = theme.Accent, BorderSizePixel = 0}, card)
+    local status = label("Starting",70,24,12,theme.Text)
+    local detail = label("Preparing your interface",132,18,10,theme.Text)
+    detail.TextTransparency = 0.45
+    local track = make("Frame", {Position = UDim2.new(0,24,0,112), Size = UDim2.new(1,-48,0,4),
+        BackgroundColor3 = theme.Outline, BackgroundTransparency = 0.4, BorderSizePixel = 0}, card)
+    make("UICorner", {CornerRadius = UDim.new(1,0)}, track)
+    local fill = make("Frame", {Size = UDim2.fromScale(0,1), BackgroundColor3 = theme.Accent, BorderSizePixel = 0}, track)
+    make("UICorner", {CornerRadius = UDim.new(1,0)}, fill)
+    local loader = {Screen = screen, Closed = false}
+    local progressTween
+    function loader:Stage(text, fraction, description)
+        if self.Closed then return end
+        status.Text = text; detail.Text = description or ""
+        if progressTween then progressTween:Cancel() end
+        progressTween = TweenService:Create(fill,TweenInfo.new(0.15),{Size = UDim2.fromScale(fraction,1)})
+        progressTween:Play()
+    end
+    function loader:Close()
+        if self.Closed then return end
+        self.Closed = true
+        if progressTween then progressTween:Cancel() end
+        screen:Destroy()
+    end
+    function loader:Finish(detailText)
+        if self.Closed then return end
+        self:Stage("Ready",1,detailText or "Interface ready")
+        task.delay(0.15,function()
+            if self.Closed then return end
+            TweenService:Create(card,TweenInfo.new(0.16),{GroupTransparency = 1}):Play()
+            task.delay(0.16,function() self:Close() end)
+        end)
+    end
+    function loader:Fail(message)
+        self:Stage("Couldn’t finish loading",0,tostring(message))
+        local close = make("TextButton", {Text = "Close", Size = UDim2.fromOffset(54,26),
+            Position = UDim2.new(1,-65,0,14), BackgroundTransparency = 1,
+            TextColor3 = theme.Text, Font = Enum.Font.Gotham, TextSize = 11}, card)
+        close.Activated:Connect(function() self:Close() end)
+    end
+    UIScreen.Destroying:Once(function() loader:Close() end)
+    return loader
+end
+function UI:_BuildWindow(Config, startup)
+    Config = Config or {}
+    local ok, failure = pcall(function()
+        if startup then startup:Stage("Checking game",0.1,"Waiting for Roblox") end
+        if not game:IsLoaded() then game.Loaded:Wait() end
+        local players = game:GetService("Players")
+        while not players.LocalPlayer do players:GetPropertyChangedSignal("LocalPlayer"):Wait() end
+        players.LocalPlayer:WaitForChild("PlayerGui")
+        if startup then startup:Stage("Loading icons",0.3,"Fetching the interface icon library") end
+        LoadIcons()
+    end)
+    if not ok then
+        if startup then startup:Fail("Icon library unavailable. Reload to retry.") end
+        error(failure,0)
+    end
+    if startup then startup:Stage("Building interface",0.5,"Applying theme and layout") end
     local Window = {
         Name = Config.Name or "VexUI",
         Author = Config.Author or nil,
@@ -853,6 +1024,7 @@ function UI:CreateWindow(Config)
         return Window, Edit
     end
 
+    if startup and Window.KeySystem then startup.Screen.Enabled = false end
     if Window.KeySystem and Window.KeySystem.KeyValidator then
         local KeyFrame = VexUI:Create("Frame", {
             Parent = UIScreen,
@@ -1148,6 +1320,7 @@ function UI:CreateWindow(Config)
         coroutine.yield()
     end
 
+    if startup then startup.Screen.Enabled = true; UIScreen.Enabled = false end
     local Main = VexUI:Create("Frame", {
         Name = Window.Name,
         Size = UDim2.new(0, Window.Size.X.Offset, 0, Window.Size.Y.Offset),
@@ -1215,10 +1388,32 @@ function UI:CreateWindow(Config)
         Name = "HeaderAccent", Parent = Main,
         AnchorPoint = Vector2.new(0.5, 0),
         Position = UDim2.new(0.5, 0, 0, Window.Topbar.Height + 7),
-        Size = UDim2.new(0, 64, 0, 2),
+        Size = UDim2.new(0, 0, 0, 2),
         BackgroundTransparency = 0.2, ZIndex = 200,
         ThemeID = {BackgroundColor3 = "Accent"},
     }, {VexUI:Create("UICorner", {CornerRadius = UDim.new(0, 1)})})
+    do
+        local function fitHeaderAccent()
+            local scale = math.max(0.05, Main.UIScale.Scale)
+            local availableWidth = TitleLabel.AbsoluteSize.X / scale
+            local textWidth = game:GetService("TextService"):GetTextSize(
+                TitleLabel.Text, TitleLabel.TextSize, TitleLabel.Font,
+                Vector2.new(100000, 100000)
+            ).X
+            HeaderAccent.Size = UDim2.new(0, math.min(textWidth, availableWidth), 0, 2)
+            HeaderAccent.Position = UDim2.new(
+                TitleLabel.Position.X.Scale + TitleLabel.Size.X.Scale / 2,
+                TitleLabel.Position.X.Offset + TitleLabel.Size.X.Offset / 2,
+                0, Window.Topbar.Height + 7
+            )
+        end
+        TitleLabel:GetPropertyChangedSignal("Text"):Connect(fitHeaderAccent)
+        TitleLabel:GetPropertyChangedSignal("TextSize"):Connect(fitHeaderAccent)
+        TitleLabel:GetPropertyChangedSignal("Font"):Connect(fitHeaderAccent)
+        TitleLabel:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitHeaderAccent)
+        Main.UIScale:GetPropertyChangedSignal("Scale"):Connect(fitHeaderAccent)
+        fitHeaderAccent()
+    end
     local function HeaderButton(name, icon, offset, callback)
         local button = VexUI:Create("ImageButton", {
             Name = name, Parent = Main, Image = "",
@@ -2329,7 +2524,7 @@ function UI:CreateWindow(Config)
             Size = UDim2.new(0, 25, 0, 25),
             ZIndex = 11,
             Image = (function()
-                return game:GetService("Players"):GetUserThumbnailAsync(Window.User.Anonymous and 1 or game.Players.LocalPlayer.UserId,Enum.ThumbnailType.HeadShot,Enum.ThumbnailSize.Size150x150)
+                return game:GetService("Players"):GetUserThumbnailAsync(Window.User.Anonymous and 1 or game:GetService("Players").LocalPlayer.UserId,Enum.ThumbnailType.HeadShot,Enum.ThumbnailSize.Size150x150)
             end)(),
         },{
             VexUI:Create("UICorner", {
@@ -2356,7 +2551,7 @@ function UI:CreateWindow(Config)
         RichText = true,
         Size = UDim2.new(1, 0, 1, 0),
         FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.SemiBold, Enum.FontStyle.Normal),
-        Text = Window.User.Anonymous and "Anonymous" or game.Players.LocalPlayer.DisplayName,
+        Text = Window.User.Anonymous and "Anonymous" or game:GetService("Players").LocalPlayer.DisplayName,
         TextTransparency = 0,
         TextSize = 13,
         ZIndex = 11,
@@ -2379,7 +2574,7 @@ function UI:CreateWindow(Config)
         RichText = true,
         Size = UDim2.new(1, 0, 1, 0),
         FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.SemiBold, Enum.FontStyle.Normal),
-        Text = Window.User.Anonymous and "@Anonymous" or "@"..game.Players.LocalPlayer.Name,
+        Text = Window.User.Anonymous and "@Anonymous" or "@"..game:GetService("Players").LocalPlayer.Name,
         TextTransparency = 0.35,
         TextSize = 13,
         ZIndex = 11,
@@ -2421,7 +2616,7 @@ function UI:CreateWindow(Config)
             Padding = UDim.new(0, 7)
         }),
         VexUI:Create("UIPadding", {
-            PaddingLeft = UDim.new(0, 5),
+            PaddingLeft = UDim.new(0, 16),
             PaddingRight = UDim.new(0, 5),
             PaddingBottom = UDim.new(0, 20),
             --PaddingTop = UDim.new(0, 10),
@@ -2463,7 +2658,7 @@ function UI:CreateWindow(Config)
             AutomaticSize = "None",
             BorderColor3 = Color3.new(0, 0, 0),
             BackgroundTransparency = Tab.Border and 0.6 or 1,
-            Size = UDim2.new(0, Window.SideBarWidth - 10, 0, UserInputService.TouchEnabled and 44 or 38),
+            Size = UDim2.new(0, Window.SideBarWidth - 26, 0, UserInputService.TouchEnabled and 44 or 38),
             BackgroundColor3 = Color3.fromRGB(0, 0, 0),
             BorderSizePixel = 0,
             ZIndex = 4,
@@ -2487,23 +2682,11 @@ function UI:CreateWindow(Config)
             VexUI:Create("UIStroke", {
                 Color = Color3.fromRGB(255, 255, 255),
                 LineJoinMode = "Round",
-                Thickness = 0.6,
+                Thickness = 1,
+                ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
                 ThemeID = {
                     Color = "Outline"
                 }
-            },{
-                VexUI:Create("UIGradient", {
-                    Color = ColorSequence.new(
-                        Color3.fromRGB(255, 255, 255), 
-                        Color3.fromRGB(255, 255, 255)
-                    ),
-                    Transparency = NumberSequence.new({
-                        NumberSequenceKeypoint.new(0, 0.1),
-                        NumberSequenceKeypoint.new(0.5, 1),
-                        NumberSequenceKeypoint.new(1, 1)
-                    }),
-                    Rotation = -110
-                })
             }),
             VexUI:Create("UIPadding", {
                 PaddingBottom = UDim.new(0, 5),
@@ -2561,14 +2744,6 @@ function UI:CreateWindow(Config)
             TabIcon.ImageTransparency = 0.3
         end
         
-        local ActiveRail = VexUI:Create("Frame", {
-            Name = "ActiveRail", Parent = TabBack,
-            Position = UDim2.new(0, 5, 0.5, -7),
-            Size = UDim2.new(0, 2, 0, 14),
-            BackgroundTransparency = 1, ZIndex = 7,
-            ThemeID = { BackgroundColor3 = "Accent" },
-        }, {VexUI:Create("UICorner", {CornerRadius = UDim.new(0, 1)})})
-
         local ElementFrame = VexUI:Create("Frame", {
             Parent = ElementFolder,
             AnchorPoint = Vector2.new(1, 0),
@@ -2630,8 +2805,6 @@ function UI:CreateWindow(Config)
             Utility:TweenObject(ElementFrame, {BackgroundTransparency = 1}, 0.2)
             for _, v in next, Window.Tabs do
                 Utility:TweenObject(v, {BackgroundTransparency = 1}, 0.2)
-                local rail = v:FindFirstChild("ActiveRail")
-                if rail then Utility:TweenObject(rail, {BackgroundTransparency = 1}, 0.15) end
                 for _, obj in ipairs(v:GetChildren()) do
                     if obj:IsA("TextLabel") then
                         VexUI:AddThemeObject(obj, {TextColor3 = "Tab.Text|Text"})
@@ -2643,9 +2816,8 @@ function UI:CreateWindow(Config)
                     end
                 end
             end
-            Utility:TweenObject(TabBack, {BackgroundTransparency = 1}, 0.18)
-            Utility:TweenObject(ActiveRail, {BackgroundTransparency = 0}, 0.18)
-            Utility:TweenObject(TabBack.UIStroke, {Transparency = 1}, 0.2)
+            Utility:TweenObject(TabBack, {BackgroundTransparency = 0.35}, 0.18)
+            Utility:TweenObject(TabBack.UIStroke, {Transparency = 0.35}, 0.2)
             VexUI:AddThemeObject(TabTitle, {TextColor3 = "Tab.ActiveText|Accent"})
             Utility:TweenObject(TabTitle, {TextTransparency = 0}, 0.2)
             if TabIcon then
@@ -2712,7 +2884,7 @@ function UI:CreateWindow(Config)
                 Position = UDim2.new(0, 0, 0, 0),
                 BorderColor3 = Color3.new(0, 0, 0),
                 AutomaticSize = "Y",
-                ClipsDescendants = true,
+                ClipsDescendants = false,
                 BackgroundTransparency = 0,
                 Size = UDim2.new(0, ElementFrame.Size.X.Offset - 24, 0, Paragraph.SizeY),
                 BackgroundColor3 = Color3.fromRGB(0, 0, 0),
@@ -2735,6 +2907,7 @@ function UI:CreateWindow(Config)
                 VexUI:Create("UIPadding", {
                     PaddingTop = UDim.new(0,10),
                     PaddingLeft = UDim.new(0,9),
+                    PaddingRight = UDim.new(0,9),
                     PaddingBottom = UDim.new(0,10)
                 }),
                 VexUI:Create("UIListLayout", {
@@ -2746,14 +2919,14 @@ function UI:CreateWindow(Config)
                     AutomaticSize = Enum.AutomaticSize.Y,
                     Size = UDim2.new(1, 0, 0, 0),
                     LayoutOrder = 2,
-                    ClipsDescendants = true,
+                    ClipsDescendants = false,
                     ZIndex = 16,
                 },{
                     VexUI:Create("Frame", {
                         BackgroundTransparency = 1,
                         AutomaticSize = Enum.AutomaticSize.Y,
                         Size = UDim2.new(1, 0, 0, 0),
-                        ClipsDescendants = true,
+                        ClipsDescendants = false,
                         ZIndex = 16,
                     },{
                         VexUI:Create("UIListLayout", {
@@ -2792,8 +2965,8 @@ function UI:CreateWindow(Config)
             end
 
             local Title = Text(ParagraphFrame.Frame.Frame, Paragraph.Title, {
-                Size = UDim2.new(0, 0, 0, 5),
-                AutomaticSize = "XY",
+                Size = UDim2.new(1, 0, 0, 20),
+                AutomaticSize = "Y",
                 ZIndex = 16,
                 FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.SemiBold, Enum.FontStyle.Normal),
                 TextSize = 13,
@@ -2811,8 +2984,8 @@ function UI:CreateWindow(Config)
             })
             Title.Position = UDim2.new(0, 0, 0, 0)
             local Desc = Text(ParagraphFrame.Frame.Frame, Paragraph.Desc, {
-                Size = UDim2.new(0, 0, 0, 5),
-                AutomaticSize = "XY",
+                Size = UDim2.new(1, 0, 0, 20),
+                AutomaticSize = "Y",
                 ZIndex = 16,
                 FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal),
                 TextSize = 12,
@@ -2892,6 +3065,7 @@ function UI:CreateWindow(Config)
                 ZIndex = 25,
             })
             local Title, Desc = Utility:ElText(Inner, Button.Title, Button.Desc, "Button")
+            if Button.Icon then Inner.Size = UDim2.new(1, -36, 0, 0) end
 
             local Icon
             if Button.Icon then
@@ -2970,7 +3144,7 @@ function UI:CreateWindow(Config)
                 ZIndex = 25,
             })
             local Title, Desc = Utility:ElText(Inner, Togglee.Title, Togglee.Desc, "Toggle")
-            Inner.Size = UDim2.new(1, -58, 1, 0)
+            Inner.Size = UDim2.new(1, -64, 0, 0)
 
             local ToggleV = VexUI:Create("Frame", {
                 Parent = ToggleFrame,
@@ -3176,246 +3350,247 @@ function UI:CreateWindow(Config)
         end
 
         function Tab:Slider(Config)
+            Config = Config or {}
+            local function Finite(value, fallback)
+                value = tonumber(value)
+                if not value or value ~= value or math.abs(value) == math.huge then return fallback end
+                return value
+            end
+            local range = Config.Value or {}
+            local function ValidStep(value, fallback)
+                value = Finite(value, fallback)
+                return value > 0 and math.max(0.0000000001, value) or fallback
+            end
+            local minimum = Finite(range.Min, 0)
+            local maximum = math.max(minimum, Finite(range.Max, 100))
             local Slider = {
-                Title = Config.Title or "Slider",
-                Desc = Config.Desc or nil,
-                Locked = Config.Locked or false,
-                Step = Config.Step or 1,
-                Value = Config.Value or { Min = 0, Max = 100, Default = 50 },
+                Title = Config.Title or "Slider", Desc = Config.Desc,
+                Locked = Config.Locked == true,
+                Step = ValidStep(Config.Step, 1),
+                Value = {Min = minimum, Max = maximum, Default = Finite(range.Default, minimum)},
                 Callback = Config.Callback or function() end,
-                Locked = Config.Locked,
-                SizeY = Config.SizeY or 40,
+                SizeY = math.max(0, Finite(Config.SizeY, 0)),
             }
-            -- Never expose binary floating-point tails in the displayed value.
             local function FormatValue(value)
                 local text = string.format("%.10f", value):gsub("0+$", ""):gsub("%.$", "")
                 return text == "-0" and "0" or text
             end
             local function NormalizeValue(value)
-                local minimum, maximum = Slider.Value.Min, Slider.Value.Max
-                local step = tonumber(Slider.Step) or 1
-                if step <= 0 or step ~= step or step == math.huge then step = 1 end
-                local clamped = math.clamp(value, minimum, maximum)
-                local snapped = math.round(clamped / step) * step
-                return tonumber(FormatValue(math.clamp(snapped, minimum, maximum)))
+                local min, max = Slider.Value.Min, Slider.Value.Max
+                local clamped = math.clamp(Finite(value, min), min, max)
+                -- Preserve both endpoints even when the range is not a multiple of Step.
+                if clamped == min or clamped == max then return clamped end
+                local snapped = math.round(clamped / Slider.Step) * Slider.Step
+                return math.clamp(tonumber(FormatValue(snapped)), min, max)
             end
-            local function ValueRatio(value)
+            local function Ratio(value)
                 local span = Slider.Value.Max - Slider.Value.Min
                 return span > 0 and math.clamp((value - Slider.Value.Min) / span, 0, 1) or 0
             end
-            local Beeee, SliderElement, Inner = Utility:Element(RightScroll, ElementFrame, Slider.SizeY, "Slider")
-            Inner.Size = UDim2.new(1, -182, 0, 0)
-            Inner.AutomaticSize = Enum.AutomaticSize.Y
-            local Title, Desc = Utility:ElText(Inner, Slider.Title, Slider.Desc, "Slider")
-
-            local function SizeCard()
-                local scale = math.max(0.05, Main.UIScale.Scale)
-                Beeee.Size = UDim2.new(0, Beeee.Size.X.Offset, 0,
-                    math.max(Slider.SizeY, Inner.AbsoluteSize.Y / scale + 14))
-            end
-            Inner:GetPropertyChangedSignal("AbsoluteSize"):Connect(SizeCard)
-            SizeCard()
-
-            local ValueFrame = VexUI:Create("Frame", {
-                Parent = SliderElement,
-                AnchorPoint = Vector2.new(1, 0.5),
-                Position = UDim2.new(1, -72, 0.5, 0),
-                Size = UDim2.new(0, 96, 0, 4),
-                ClipsDescendants = false, BackgroundTransparency = 0.25,
-                ZIndex = 15, ThemeID = {BackgroundColor3 = "Outline"},
-            }, {VexUI:Create("UICorner", {CornerRadius = UDim.new(1, 0)})})
-
-            local DropValue = VexUI:Create("Frame", {
-                Parent = ValueFrame,
-                BorderSizePixel = 0,
-                ClipsDescendants = false,
-                BackgroundTransparency = 0,
-                Size = UDim2.new(0, 0, 1, 0),
-                ZIndex = 16,
-                ThemeID = {
-                    BackgroundColor3 = "Slider.SliderPart|Accent"
-                }
-            }, {
-                VexUI:Create("UICorner", {
-                    CornerRadius = UDim.new(0, 12),
-                }),
+            -- This row owns its layout; it does not compete with Utility:Element's fitter.
+            local row = VexUI:Create("Frame", {
+                Name = "SliderRow", Parent = RightScroll, BackgroundTransparency = 1,
+                Size = UDim2.new(0, ElementFrame.Size.X.Offset - 24, 0, 64), ZIndex = 15,
             })
-
-            VexUI:Create("Frame", {
-                Name = "Thumb", Parent = DropValue,
-                AnchorPoint = Vector2.new(0.5, 0.5),
-                Position = UDim2.new(1, 0, 0.5, 0),
-                Size = UDim2.new(0, 10, 0, 10), ZIndex = 17,
+            local card = VexUI:Create("Frame", {
+                Name = "Card", Parent = row, Size = UDim2.new(1, 0, 1, 0), ZIndex = 15,
+                ClipsDescendants = false, ThemeID = {BackgroundColor3 = "Slider.Background|ElementColor"},
+            }, {VexUI:Create("UICorner", {CornerRadius = UDim.new(0, 8)}), Utility:GlassStroke()})
+            local textColumn = VexUI:Create("Frame", {
+                Name = "TextColumn", Parent = card, Position = UDim2.new(0, 0, 0, 8),
+                Size = UDim2.new(1, -82, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+                BackgroundTransparency = 1, ZIndex = 16,
+            }, {Utility:ListLayout("V", 2)})
+            local title, description = Utility:ElText(textColumn, Slider.Title, Slider.Desc, "Slider")
+            local valueBox = VexUI:Create("TextBox", {
+                Name = "Value", Parent = card, AnchorPoint = Vector2.new(1, 0),
+                Position = UDim2.new(1, -12, 0, 8), Size = UDim2.new(0, 64, 0, 26),
+                Text = "", TextSize = 12, Font = Enum.Font.GothamMedium,
+                ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Center,
+                BackgroundTransparency = 0.35, BorderSizePixel = 0, ZIndex = 20,
+                ThemeID = {BackgroundColor3 = "Slider.Placeholder|Placeholder", TextColor3 = "Slider.ValueText|Accent"},
+            }, {VexUI:Create("UICorner", {CornerRadius = UDim.new(0, 5)})})
+            local hit = VexUI:Create("TextButton", {
+                Name = "SliderHit", Parent = card, Position = UDim2.new(0, 8, 0, 34),
+                Size = UDim2.new(1, -16, 0, 30), Text = "", TextTransparency = 1,
+                BackgroundTransparency = 1, Active = true, ZIndex = 22,
+            })
+            local rail = VexUI:Create("Frame", {
+                Name = "Track", Parent = hit, AnchorPoint = Vector2.new(0, 0.5),
+                Position = UDim2.new(0, 9, 0.5, 0), Size = UDim2.new(1, -18, 0, 4),
+                BackgroundTransparency = 0.25, Active = false, ZIndex = 23,
+                ThemeID = {BackgroundColor3 = "Slider.Track|Outline"},
+            }, {VexUI:Create("UICorner", {CornerRadius = UDim.new(1, 0)})})
+            local fill = VexUI:Create("Frame", {
+                Name = "Fill", Parent = rail, Size = UDim2.new(0, 0, 1, 0), Active = false, ZIndex = 24,
                 ThemeID = {BackgroundColor3 = "Slider.SliderPart|Accent"},
             }, {VexUI:Create("UICorner", {CornerRadius = UDim.new(1, 0)})})
+            local thumb = VexUI:Create("Frame", {
+                Name = "Thumb", Parent = rail, AnchorPoint = Vector2.new(0.5, 0.5),
+                Position = UDim2.new(0, 0, 0.5, 0), Size = UDim2.new(0, 12, 0, 12),
+                Active = false, ZIndex = 25, ThemeID = {BackgroundColor3 = "Text"},
+            }, {VexUI:Create("UICorner", {CornerRadius = UDim.new(1, 0)}),
+                VexUI:Create("UIStroke", {Thickness = 2, Transparency = 0.1,
+                    ThemeID = {Color = "Slider.SliderPart|Accent"}})})
 
-            local BGFrame = VexUI:Create("Frame", {
-                Parent = SliderElement, AnchorPoint = Vector2.new(1, 0.5),
-                Position = UDim2.new(1, -14, 0.5, 0),
-                Size = UDim2.new(0, 54, 0, 24),
-                BackgroundTransparency = 1, ClipsDescendants = true, ZIndex = 15,
-            })
-
-            local SliderTRG = VexUI:Create("TextButton", {
-                Parent = ValueFrame,
-                AnchorPoint = Vector2.new(0, 0.5),
-                Position = UDim2.new(0, 0, 0.5, 0),
-                Size = UDim2.new(1, 0, 0, 44),
-                BackgroundTransparency = 1,
-                TextTransparency = 1,
-                ZIndex = 25,
-            })
-
-            local BGBox = VexUI:Create("TextLabel", {
-                Parent = BGFrame,
-                AnchorPoint = Vector2.new(0.5, 0.5),
-                Position = UDim2.new(0.5, 0, 0.5, 0),
-                BackgroundTransparency = 1,
-                ZIndex = 16,
-                Size = UDim2.new(1, 0, 1, 0),
-                Text = FormatValue(NormalizeValue(Slider.Value.Default or Slider.Value.Min)),
-                TextColor3 = Color3.fromRGB(255, 255, 255),
-                FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.SemiBold, Enum.FontStyle.Normal),
-                TextSize = 12,
-                ThemeID = {
-                    TextColor3 = "Slider.ValueText|Accent"
-                }
-            })
-
-            local ScrollFrame = VexUI:Create("Frame", {
-                Parent = DropValue,
-                AnchorPoint = Vector2.new(0, 1),
-                Position = UDim2.new(0, 0, -1.5, -5),
-                BackgroundTransparency = 1,
-                Size = UDim2.new(0, 35, 0, 20),
-                ClipsDescendants = true,
-                Visible = false,
-                ZIndex = 30,
-                ThemeID = {
-                    BackgroundColor3 = "Slider.Placeholder|Placeholder"
-                }
-            }, {
-                VexUI:Create("UICorner", {
-                    CornerRadius = UDim.new(0, 6),
-                }),
-                VexUI:Create("TextLabel", {
-                    BackgroundTransparency = 1,
-                    Size = UDim2.new(1, 0, 1, 0),
-                    TextColor3 = Color3.fromRGB(255, 255, 255),
-                    TextTransparency = 1,
-                    TextSize = 11,
-                    ZIndex = 31,
-                    FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.SemiBold, Enum.FontStyle.Normal),
-                    ThemeID = {
-                        TextColor3 = "Slider.Text|Text"
-                    }
-                }),
-            })
-
-            function Slider:Lock()
-                Slider.Locked = true
-                LockedElm(Beeee,true)
+            local value = NormalizeValue(Slider.Value.Default)
+            local destroyed, editing = false, false
+            local inputOwner, phase, startValue
+            local scrollWasEnabled, movedConnection, endedConnection
+            local renderSize = 12
+            local function Paint()
+                local fraction = Ratio(value)
+                fill.Size = UDim2.new(fraction, 0, 1, 0)
+                thumb.Position = UDim2.new(fraction, 0, 0.5, 0)
+                thumb.Size = UDim2.fromOffset(renderSize, renderSize)
+                fill.BackgroundTransparency = Slider.Locked and 0.55 or 0
+                thumb.BackgroundTransparency = Slider.Locked and 0.5 or 0
+                valueBox.TextEditable = not Slider.Locked
+                valueBox.TextTransparency = Slider.Locked and 0.5 or 0
+                if not editing then valueBox.Text = FormatValue(value) end
             end
-            function Slider:UnLock()
-                Slider.Locked = false
-                LockedElm(Beeee,false)
+            local function Set(valueToSet, forceCallback)
+                local nextValue = NormalizeValue(valueToSet)
+                local changed = nextValue ~= value
+                value = nextValue
+                Paint()
+                if changed or forceCallback then task.spawn(Slider.Callback, value) end
             end
-            if Slider.Locked then
-                Slider:Lock()
+            local function StopDrag(notify)
+                if not inputOwner then return end
+                local wasDragging = phase == "dragging"
+                inputOwner, phase = nil, nil
+                if movedConnection then movedConnection:Disconnect(); movedConnection = nil end
+                if endedConnection then endedConnection:Disconnect(); endedConnection = nil end
+                if wasDragging then
+                    HoldingSlider = false
+                    if RightScroll.Parent then RightScroll.ScrollingEnabled = scrollWasEnabled end
+                end
+                renderSize = 12
+                if not destroyed then Paint() end
+                if notify and value ~= startValue then NotifyAction(Slider.Title, FormatValue(value)) end
             end
-
-            local Value = NormalizeValue(Slider.Value.Default or Slider.Value.Min)
-            DropValue.Size = UDim2.new(ValueRatio(Value), 0, 1, 0)
-            local dragInput, moveConnection, endConnection
-            local previousScrolling
-            local dragStartValue
-            local function StopDrag()
-                if not dragInput then return end
-                dragInput = nil
-                HoldingSlider = false
-                if Value ~= dragStartValue then NotifyAction(Slider.Title, FormatValue(Value)) end
-                if moveConnection then moveConnection:Disconnect(); moveConnection = nil end
-                if endConnection then endConnection:Disconnect(); endConnection = nil end
-                if RightScroll.Parent then RightScroll.ScrollingEnabled = previousScrolling end
+            local function CanUse()
+                return not destroyed and not Slider.Locked and Window.IslandOpen and Main.Visible and ElementFrame.Visible
             end
             local function MoveTo(position)
-                if Slider.Locked or not Window.IslandOpen then StopDrag(); return end
-                local ratio = math.clamp((position.X - ValueFrame.AbsolutePosition.X)
-                    / math.max(1, ValueFrame.AbsoluteSize.X), 0, 1)
-                local nextValue = NormalizeValue(Slider.Value.Min + ratio * (Slider.Value.Max - Slider.Value.Min))
-                -- Track the finger directly; repeated tweens made dragging lag behind.
-                DropValue.Size = UDim2.new(ValueRatio(nextValue), 0, 1, 0)
-                BGBox.Text = FormatValue(nextValue)
-                if nextValue ~= Value then
-                    Value = nextValue
-                    task.spawn(Slider.Callback, nextValue)
-                end
+                if not CanUse() then StopDrag(false); return end
+                local fraction = math.clamp((position.X - rail.AbsolutePosition.X) / math.max(1, rail.AbsoluteSize.X), 0, 1)
+                Set(Slider.Value.Min + fraction * (Slider.Value.Max - Slider.Value.Min), false)
             end
-            SliderTRG.InputBegan:Connect(function(input)
-                if Slider.Locked or HoldingSlider then return end
-                local touch = input.UserInputType == Enum.UserInputType.Touch
-                if not touch and input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
-                dragInput = input
-                dragStartValue = Value
+            local function ClaimDrag()
+                if HoldingSlider or not CanUse() then StopDrag(false); return false end
+                phase = "dragging"
                 HoldingSlider = true
-                previousScrolling = RightScroll.ScrollingEnabled
+                scrollWasEnabled = RightScroll.ScrollingEnabled
                 RightScroll.ScrollingEnabled = false
+                renderSize = 14
+                Paint()
+                return true
+            end
+            hit.InputBegan:Connect(function(input)
+                if inputOwner or HoldingSlider or editing or not CanUse() then return end
+                local touch = input.UserInputType == Enum.UserInputType.Touch
+                local mouse = input.UserInputType == Enum.UserInputType.MouseButton1
+                if not touch and not mouse then return end
+
+                inputOwner = input
+                startValue = value
+                if not ClaimDrag() then return end
                 MoveTo(input.Position)
-                moveConnection = UserInputService.InputChanged:Connect(function(changed)
-                    if (touch and changed == dragInput)
-                        or (not touch and changed.UserInputType == Enum.UserInputType.MouseMovement) then
+
+                movedConnection = UserInputService.InputChanged:Connect(function(changed)
+                    if not inputOwner then return end
+                    if touch and changed == inputOwner then
+                        MoveTo(changed.Position)
+                    elseif mouse and changed.UserInputType == Enum.UserInputType.MouseMovement then
                         MoveTo(changed.Position)
                     end
                 end)
-                endConnection = UserInputService.InputEnded:Connect(function(ended)
-                    if ended == dragInput or (not touch and ended.UserInputType == Enum.UserInputType.MouseButton1) then
-                        StopDrag()
+                endedConnection = UserInputService.InputEnded:Connect(function(ended)
+                    if not inputOwner then return end
+                    if (touch and ended == inputOwner) or (mouse and ended.UserInputType == Enum.UserInputType.MouseButton1) then
+                        StopDrag(true)
                     end
                 end)
             end)
-            local focusConnection = UserInputService.WindowFocusReleased:Connect(StopDrag)
-            local visibilityConnection = Main:GetPropertyChangedSignal("Visible"):Connect(function()
-                if not Main.Visible then StopDrag() end
+            valueBox.Focused:Connect(function()
+                if Slider.Locked then valueBox:ReleaseFocus(); return end
+                StopDrag(false)
+                editing = true
             end)
-            local pageConnection = ElementFrame:GetPropertyChangedSignal("Visible"):Connect(function()
-                if not ElementFrame.Visible then StopDrag() end
+            valueBox.FocusLost:Connect(function()
+                if destroyed then return end
+                editing = false
+                local previous = value
+                local entered = Finite(valueBox.Text, nil)
+                if not Slider.Locked and entered then Set(entered, false) else Paint() end
+                if value ~= previous then NotifyAction(Slider.Title, FormatValue(value)) end
             end)
-            Beeee.Destroying:Once(function()
-                StopDrag()
-                focusConnection:Disconnect()
-                visibilityConnection:Disconnect()
-                pageConnection:Disconnect()
+            local function Layout()
+                if destroyed then return end
+                local scale = math.max(0.05, Main.UIScale.Scale)
+                local touch = UserInputService.TouchEnabled
+                local targetHeight = touch and math.max(34, math.ceil(32 / scale)) or 28
+                local headerHeight = math.max(24, math.ceil(textColumn.AbsoluteSize.Y / scale))
+                local height = math.max(Slider.SizeY, 8 + headerHeight + targetHeight + 4)
+                if row.Size.Y.Offset ~= height then row.Size = UDim2.new(row.Size.X.Scale, row.Size.X.Offset, 0, height) end
+                hit.Position = UDim2.new(0, 8, 0, height - targetHeight - 4)
+                hit.Size = UDim2.new(1, -16, 0, targetHeight)
+            end
+            local connections = {
+                textColumn:GetPropertyChangedSignal("AbsoluteSize"):Connect(Layout),
+                Main.UIScale:GetPropertyChangedSignal("Scale"):Connect(Layout),
+                UserInputService:GetPropertyChangedSignal("TouchEnabled"):Connect(Layout),
+                UserInputService.WindowFocusReleased:Connect(function() StopDrag(false) end),
+                Main:GetPropertyChangedSignal("Visible"):Connect(function() if not Main.Visible then StopDrag(false) end end),
+                Main.Frame:GetPropertyChangedSignal("Visible"):Connect(function() if not Main.Frame.Visible then StopDrag(false) end end),
+                ElementFrame:GetPropertyChangedSignal("Visible"):Connect(function() if not ElementFrame.Visible then StopDrag(false) end end),
+            }
+            row.Destroying:Once(function()
+                destroyed = true
+                StopDrag(false)
+                for _, connection in ipairs(connections) do connection:Disconnect() end
             end)
-
-            function Slider:SetValue(val)
-                local rounded = NormalizeValue(val)
-                Value = rounded
-                BGBox.Text = FormatValue(rounded)
-                ScrollFrame:FindFirstChildOfClass("TextLabel").Text = FormatValue(rounded)
-                Utility:TweenObject(DropValue, {Size = UDim2.new(ValueRatio(rounded),0, 1, 0)}, 0.1, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
-                task.spawn(Slider.Callback, rounded)
+            function Slider:SetValue(newValue) Set(newValue, true); return self end
+            function Slider:GetValue() return value end
+            function Slider:SetTitle(newTitle)
+                self.Title = tostring(newTitle); title.SetText(self.Title); return self
             end
-
-            function Slider:SetDesc(val)
-                Desc.Frame.Visible = true
-                Desc.SetText(val)
+            function Slider:SetDesc(newDesc)
+                self.Desc = newDesc
+                description.Frame.Visible = newDesc ~= nil and newDesc ~= ""
+                description.SetText(newDesc); return self
             end
-            function Slider:SetMax(val)
-                Slider.Value.Max = val
+            function Slider:SetMax(newMax)
+                StopDrag(false)
+                self.Value.Max = math.max(self.Value.Min, Finite(newMax, self.Value.Max))
+                Set(value, false); return self
             end
-            function Slider:SetMin(val)
-                Slider.Value.Min = val
+            function Slider:SetMin(newMin)
+                StopDrag(false)
+                self.Value.Min = math.min(self.Value.Max, Finite(newMin, self.Value.Min))
+                Set(value, false); return self
             end
-            function Slider:SetStep(val)
-                Slider.Step = val
-                self:SetValue(Value)
+            function Slider:SetStep(newStep)
+                StopDrag(false)
+                self.Step = ValidStep(newStep, self.Step)
+                Set(value, false); return self
             end
-            function Slider:Close()
-                Beeee:Destroy()
+            function Slider:Lock()
+                self.Locked = true; StopDrag(false); valueBox:ReleaseFocus(); Paint(); return self
             end
-            Utility:Search(Window, {Title = Slider.Title, Desc = Slider.Desc, Icon = "settings-2",Type = "Slider", TabTitle = Tab.Title, SelectFn = SelectTab, Frame = Beeee, RightScroll = RightScroll,})
+            function Slider:UnLock() self.Locked = false; Paint(); return self end
+            function Slider:Close() row:Destroy() end
+            Slider.Destroy = Slider.Close
+            Paint()
+            Layout()
+            Utility:Search(Window, {Title = Slider.Title, Desc = Slider.Desc, Icon = "settings-2", Type = "Slider",
+                TabTitle = Tab.Title, SelectFn = SelectTab, Frame = row, RightScroll = RightScroll})
             return Slider
         end
+
+
         function Tab:Dropdown(Config)
             local Dropdown = {
                 Title = Config.Title or "Dropdown",
@@ -3532,6 +3707,32 @@ function UI:CreateWindow(Config)
                     PaddingTop = UDim.new(0,5)
                 }),
             })
+
+            -- Use the same vertical text flow as other controls, reserving the
+            -- right-hand value selector instead of placing it over the title.
+            do
+                local column = DropFrame.Frame
+                column.Position = UDim2.new(0, 0, 0, 8)
+                column.Size = UDim2.new(1, -140, 0, 0)
+                column.AutomaticSize = Enum.AutomaticSize.Y
+                column.ClipsDescendants = false
+                local padding = column:FindFirstChildOfClass("UIPadding")
+                if padding then padding.PaddingTop = UDim.new(0, 0) end
+                Title.Frame.Size = UDim2.new(1, 0, 0, Title.Frame.TextSize + 6)
+                Desc.Frame.Parent = column
+                Desc.Frame.Position = UDim2.new()
+                Desc.Frame.Size = UDim2.new(1, 0, 0, Desc.Frame.TextSize + 6)
+                Desc.Frame.Visible = Dropdown.Desc ~= nil
+                Title.Frame.LayoutOrder, Desc.Frame.LayoutOrder = 1, 2
+                local function fitDropdownText()
+                    local scale = math.max(0.05, Main.UIScale.Scale)
+                    DropFrame.Size = UDim2.new(1, 0, 0,
+                        math.max(40, math.ceil(column.AbsoluteSize.Y / scale) + 16))
+                end
+                column:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitDropdownText)
+                Main.UIScale:GetPropertyChangedSignal("Scale"):Connect(fitDropdownText)
+                task.defer(fitDropdownText)
+            end
 
             local DropValueFrame = VexUI:Create("Frame", {
                 Parent = DropFrame,
@@ -3858,6 +4059,7 @@ function UI:CreateWindow(Config)
             }
             local Beeee, InputElement, Inner = Utility:Element(RightScroll, ElementFrame, Input.SizeY, "Input")
             local Title, Desc = Utility:ElText(Inner, Input.Title, Input.Desc, "Button")
+            Inner.Size = UDim2.new(1, -150, 0, 0)
             
             local InputFrame = VexUI:Create("Frame", {
                 Parent = InputElement,
@@ -4010,6 +4212,7 @@ function UI:CreateWindow(Config)
             }
             local Beeee, KeybindElement, Inner = Utility:Element(RightScroll, ElementFrame, Keybind.SizeY, "Keybind")
             local Title, Desc = Utility:ElText(Inner, Keybind.Title, Keybind.Desc, "Keybind")
+            Inner.Size = UDim2.new(1, -54, 0, 0)
 
             local KeyFrame = VexUI:Create("TextButton", {
                 Parent = KeybindElement,
@@ -4207,10 +4410,10 @@ function UI:CreateWindow(Config)
             LeftScroll.Size = UDim2.new(1, 0, 1, Value and -64 or -16)
         end
         function Window:Anonymous(Value)
-            UserTitle.Text = Value and "Anonymous" or game.Players.LocalPlayer.DisplayName
-            UserSub.Text = Value and "@Anonymous" or "@"..game.Players.LocalPlayer.Name
+            UserTitle.Text = Value and "Anonymous" or game:GetService("Players").LocalPlayer.DisplayName
+            UserSub.Text = Value and "@Anonymous" or "@"..game:GetService("Players").LocalPlayer.Name
             UserFrame.ImageLabel.Image = (function()
-                return game:GetService("Players"):GetUserThumbnailAsync(Value and 1 or game.Players.LocalPlayer.UserId,Enum.ThumbnailType.HeadShot,Enum.ThumbnailSize.Size150x150)
+                return game:GetService("Players"):GetUserThumbnailAsync(Value and 1 or game:GetService("Players").LocalPlayer.UserId,Enum.ThumbnailType.HeadShot,Enum.ThumbnailSize.Size150x150)
             end)()
         end
         function Tab:Group(Config)
@@ -4287,11 +4490,14 @@ function UI:CreateWindow(Config)
     local MobileBtn = VexUI:Create("TextButton", {
         Parent = UIScreen,
         Name = "AeroMobileMinimizeBtn",
-        Size = UDim2.new(0, 70, 0, 32),
-        Position = UDim2.new(0.1, 0, 0.2, 0),
+        Size = UDim2.new(0, 76, 0, 44),
+        AnchorPoint = Vector2.new(0, 0.5),
+        Position = UDim2.new(0, 0, 0.5, 0),
         BackgroundColor3 = Color3.fromRGB(0, 0, 0),
         BackgroundTransparency = 0.2,
-        Text = "Aero",
+        Text = "AERO",
+        TextTransparency = 0,
+        ThemeID = {TextColor3 = "Accent"},
         TextColor3 = Color3.fromRGB(255, 255, 255),
         TextSize = 14,
         FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal),
@@ -4376,7 +4582,7 @@ function UI:CreateWindow(Config)
         Main.Visible = false
         
         local isTouch = UserInputService.TouchEnabled
-        MobileBtn.Visible = false -- custom AERO button used instead
+        MobileBtn.Visible = isTouch
         MinzUI.Visible = not isTouch
 
     end    
@@ -4393,7 +4599,7 @@ function UI:CreateWindow(Config)
         end
     end)
 
-    MobileBtn.MouseButton1Click:Connect(function()
+    MobileBtn.Activated:Connect(function()
         if not Window.IslandOpen then
             Window:Open()
         end
@@ -5029,7 +5235,73 @@ function UI:CreateWindow(Config)
 
 
     notificationsReady = true
+    Window.Loading = startup ~= nil
+    if startup then
+        -- Deferred work lets callers register their tabs after CreateWindow returns.
+        task.defer(function()
+            local complete, problem = pcall(function()
+                startup:Stage("Preparing controls",0.65,"Waiting for tab layout")
+                local stable, lastCount, began = 0, -1, os.clock()
+                while stable < 0.2 and os.clock() - began < 5 do
+                    local dt = game:GetService("RunService").Heartbeat:Wait()
+                    if startup.Closed or not UIScreen.Parent then return end
+                    local count = #Window.SearchIndex
+                    stable = count == lastCount and stable + dt or 0
+                    lastCount = count
+                end
+                startup:Stage("Loading UI assets",0.8,"Checking icons and fonts")
+                local assets, seen = {}, {}
+                for _, object in ipairs(UIScreen:GetDescendants()) do
+                    if object:IsA("ImageLabel") or object:IsA("ImageButton") then
+                        if object.Image ~= "" and not seen[object.Image] then
+                            seen[object.Image] = true; table.insert(assets,object.Image)
+                        end
+                    elseif object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox") then
+                        local family = object.FontFace.Family
+                        if family ~= "" and not seen[family] then seen[family] = true; table.insert(assets,family) end
+                    end
+                end
+                local done, failed = #assets == 0, false
+                task.spawn(function()
+                    local loaded = pcall(function()
+                        game:GetService("ContentProvider"):PreloadAsync(assets,function(_,status)
+                            if status ~= Enum.AssetFetchStatus.Success then failed = true end
+                        end)
+                    end)
+                    failed = failed or not loaded
+                    done = true
+                end)
+                local deadline = os.clock() + 8
+                while not done and os.clock() < deadline do
+                    game:GetService("RunService").Heartbeat:Wait()
+                    if startup.Closed or not UIScreen.Parent then return end
+                end
+                if startup.Closed or not UIScreen.Parent then return end
+                UIScreen.Enabled = true
+                Window.Loading = false
+                startup:Finish((failed or not done) and "Some optional assets are still unavailable" or "Interface ready")
+            end)
+            if not complete then
+                Window.Loading = false
+                if UIScreen.Parent then UIScreen.Enabled = true end
+                startup:Fail("Asset checks failed; the interface is available.")
+                warn("[AERO Loader] " .. tostring(problem))
+            end
+        end)
+    end
     return Window
+end
+
+function UI:CreateWindow(Config)
+    Config = Config or {}
+    local startup = Config.Loader ~= false and VexUI:StartupLoader(Config) or nil
+    local ok, result = pcall(self._BuildWindow, self, Config, startup)
+    if not ok then
+        if UIScreen.Parent then UIScreen.Enabled = true end
+        if startup and not startup.Closed then startup:Fail("Setup failed. Reload to retry.") end
+        error(result, 0)
+    end
+    return result
 end
 
 local notificationScreen
