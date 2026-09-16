@@ -5304,6 +5304,61 @@ function UI:CreateWindow(Config)
     return result
 end
 
+-- Connect a script's existing validated config loader to persistent startup selection.
+function UI:AttachAutoLoad(window, config)
+    assert(type(config.Scope) == "string" and config.Scope:match("^[%w_-]+$"), "Invalid auto-load scope")
+    local filename = "AERO_Autoload_" .. config.Scope .. ".txt"
+    local alive = true
+    local status = config.Tab:Paragraph({Title = "Auto Load: None"})
+    local function valid(name)
+        return type(name) == "string" and #name > 0 and #name <= 64 and name:match("^[%w _%-]+$") ~= nil
+    end
+    local function report(message)
+        if alive then status:SetTitle("Auto Load: " .. message) end
+    end
+    local function run(action)
+        local ok, err = pcall(action)
+        if not ok then report(tostring(err)) end
+    end
+    local function readSelection()
+        if type(readfile) ~= "function" then return nil end
+        if type(isfile) == "function" and not isfile(filename) then return nil end
+        local ok, name = pcall(readfile, filename)
+        if not ok then return nil end
+        if name == "" then return nil end
+        assert(valid(name), "Saved selection is invalid; set it again.")
+        return name
+    end
+    config.Tab:Button({Title = "Set as Auto Load", Callback = function() run(function()
+        assert(type(writefile) == "function" and type(readfile) == "function", "File saving/loading is unavailable.")
+        local name = config.GetSelected()
+        assert(valid(name), "Select a saved config first.")
+        config.Load(name, true) -- Validate the file without applying or enabling features.
+        writefile(filename, name)
+        report(name)
+    end) end})
+    config.Tab:Button({Title = "Clear Auto Load", Callback = function() run(function()
+        assert(type(writefile) == "function", "File saving is unavailable.")
+        writefile(filename, "")
+        report("None")
+    end) end})
+    -- Avoid replacing the script's existing OnDestroy callback.
+    UIScreen.Destroying:Once(function() alive = false end)
+    task.defer(function() run(function()
+        local name = readSelection()
+        if not name or not alive then return end
+        report(name)
+        local deadline = os.clock() + 30
+        while window.Loading and alive and os.clock() < deadline do task.wait(0.05) end
+        if not alive then return end
+        assert(not window.Loading, "UI is not ready; load the config manually.")
+        -- Let initial control callbacks finish before restoring saved values.
+        game:GetService("RunService").Heartbeat:Wait()
+        if not alive then return end
+        config.Load(name, false)
+        report(name .. " (loaded)")
+    end) end)
+end
 local notificationScreen
 local notificationHost
 local notificationOrder = 0
