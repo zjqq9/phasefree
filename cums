@@ -5236,6 +5236,17 @@ function UI:_BuildWindow(Config, startup)
 
     notificationsReady = true
     Window.Loading = startup ~= nil
+    local readyCallbacks = {}
+    function Window:WhenReady(callback)
+        if self.Loading then table.insert(readyCallbacks, callback) else task.defer(callback) end
+    end
+    local function finishLoading()
+        Window.Loading = false
+        local callbacks = readyCallbacks
+        readyCallbacks = {}
+        for _, callback in ipairs(callbacks) do task.defer(callback) end
+    end
+    UIScreen.Destroying:Once(function() table.clear(readyCallbacks) end)
     if startup then
         -- Deferred work lets callers register their tabs after CreateWindow returns.
         task.defer(function()
@@ -5278,11 +5289,11 @@ function UI:_BuildWindow(Config, startup)
                 end
                 if startup.Closed or not UIScreen.Parent then return end
                 UIScreen.Enabled = true
-                Window.Loading = false
+                finishLoading()
                 startup:Finish((failed or not done) and "Some optional assets are still unavailable" or "Interface ready")
             end)
             if not complete then
-                Window.Loading = false
+                finishLoading()
                 if UIScreen.Parent then UIScreen.Enabled = true end
                 startup:Fail("Asset checks failed; the interface is available.")
                 warn("[AERO Loader] " .. tostring(problem))
@@ -5307,6 +5318,9 @@ end
 -- Connect a script's existing validated config loader to persistent startup selection.
 function UI:AttachAutoLoad(window, config)
     assert(type(config.Scope) == "string" and config.Scope:match("^[%w_-]+$"), "Invalid auto-load scope")
+    window._AutoLoadScopes = window._AutoLoadScopes or {}
+    if window._AutoLoadScopes[config.Scope] then return end
+    window._AutoLoadScopes[config.Scope] = true
     local filename = "AERO_Autoload_" .. config.Scope .. ".txt"
     local alive = true
     local status = config.Tab:Paragraph({Title = "Auto Load: None"})
@@ -5344,20 +5358,24 @@ function UI:AttachAutoLoad(window, config)
     end) end})
     -- Avoid replacing the script's existing OnDestroy callback.
     UIScreen.Destroying:Once(function() alive = false end)
-    task.defer(function() run(function()
-        local name = readSelection()
-        if not name or not alive then return end
-        report(name)
-        local deadline = os.clock() + 30
-        while window.Loading and alive and os.clock() < deadline do task.wait(0.05) end
-        if not alive then return end
-        assert(not window.Loading, "UI is not ready; load the config manually.")
-        -- Let initial control callbacks finish before restoring saved values.
-        game:GetService("RunService").Heartbeat:Wait()
-        if not alive then return end
-        config.Load(name, false)
-        report(name .. " (loaded)")
-    end) end)
+    local attempted = false
+    local function loadOnce()
+        if attempted or not alive then return end
+        attempted = true
+        run(function()
+            local name = readSelection()
+            if not name or not alive then return end
+            report(name)
+            -- One scheduler turn for initial control callbacks; no recurring readiness checks.
+            task.defer(function() run(function()
+                if not alive then return end
+                config.Load(name, false, true)
+                report(name .. " (loaded)")
+            end) end)
+        end)
+    end
+    if type(window.WhenReady) == "function" then window:WhenReady(loadOnce)
+    else task.defer(loadOnce) end
 end
 local notificationScreen
 local notificationHost
